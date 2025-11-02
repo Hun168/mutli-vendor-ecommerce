@@ -10,6 +10,7 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -46,12 +47,12 @@ class AppServiceProvider extends ServiceProvider
         Config::set('broadcasting.connections.pusher.key', $pusherSetting->pusher_key);
         Config::set('broadcasting.connections.pusher.secret', $pusherSetting->pusher_secret);
         Config::set('broadcasting.connections.pusher.app_id', $pusherSetting->pusher_app_id);
-        Config::set('broadcasting.connections.pusher.options.host', "api-".$pusherSetting->pusher_cluster.".pusher.com");
+        Config::set('broadcasting.connections.pusher.options.host', "api-" . $pusherSetting->pusher_cluster . ".pusher.com");
 
 
 
         /** Share variable at all view */
-        View::composer('*', function($view) use ($generalSetting, $logoSetting, $pusherSetting){
+        View::composer('*', function ($view) use ($generalSetting, $logoSetting, $pusherSetting) {
             $view->with(['settings' => $generalSetting, 'logoSetting' => $logoSetting, 'pusherSetting' => $pusherSetting]);
         });
     }
