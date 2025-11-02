@@ -103,61 +103,27 @@ class CheckOutController extends Controller
     public function generateKhqr(Request $request)
     {
         try {
-            // --- Check if detecting existing QR or generating new one ---
             $inputQrString = $request->input('qr_string');
 
             if ($inputQrString) {
-                // --- DETECT MODE: Handle Bakong API response format ---
-
-                // Check if it's a Bakong API response object
                 if (is_array($inputQrString) && isset($inputQrString['data']['qr'])) {
-                    // Extract QR string from Bakong response
+                    // Extract only data.qr and data.md5
                     $qrString = $inputQrString['data']['qr'];
-                    $originalMd5 = $inputQrString['data']['md5'] ?? null;
+                    $md5 = $inputQrString['data']['md5'] ?? md5($qrString);
                 } elseif (is_string($inputQrString)) {
-                    // Direct QR string
                     $qrString = $inputQrString;
-                    $originalMd5 = null;
+                    $md5 = md5($qrString);
                 } else {
                     return response()->json([
                         'status' => 'error',
                         'message' => 'Invalid qr_string format'
                     ], 400);
                 }
-
-                $amount = 0;
-                $currency = 840; // USD
-                $merchantName = 'Unknown';
-                $merchantCity = 'Unknown';
-                $bakongAccountID = '';
-
-                // Extract information using regex (EMVCo format)
-                // Tag 54: Amount
-                if (preg_match('/5404(\d+)/', $qrString, $matches)) {
-                    $amount = (float) $matches[1];
-                }
-
-                // Tag 59: Merchant Name (format: 59[length][name])
-                if (preg_match('/59(\d{2})(.{' . '\\1' . '})/', $qrString, $matches)) {
-                    $merchantName = trim($matches[2]);
-                }
-
-                // Tag 60: Merchant City (format: 60[length][city])
-                if (preg_match('/60(\d{2})(.{' . '\\1' . '})/', $qrString, $matches)) {
-                    $merchantCity = trim($matches[2]);
-                }
-
-                // Extract Bakong Account ID (within tag 29, subtag 00)
-                if (preg_match('/0021([a-zA-Z0-9_@.]+)/', $qrString, $matches)) {
-                    $bakongAccountID = $matches[1];
-                }
-
             } else {
-                // --- GENERATE MODE: Create new KHQR ---
+                // --- GENERATE MODE ---
                 $amount = (float) $request->input('amount', 0);
                 $currency = KHQRData::CURRENCY_USD;
 
-                // Create Individual Info
                 $individualInfo = new IndividualInfo(
                     bakongAccountID: 'meas_sotheareach@aclb',
                     merchantName: 'SOTHEAREACH MEAS',
@@ -166,75 +132,25 @@ class CheckOutController extends Controller
                     amount: $amount
                 );
 
-                // Generate KHQR String
                 $qrString = BakongKHQR::generateIndividual($individualInfo);
-
-                $merchantName = 'SOTHEAREACH MEAS';
-                $merchantCity = 'PHNOM PENH';
-                $bakongAccountID = 'meas_sotheareach@aclb';
-                $originalMd5 = null;
+                $md5 = md5($qrString);
             }
 
-            // --- Generate MD5 Hash ---
-            $md5 = md5($qrString);
-
-            // --- Ensure Folder Exists ---
-            $folderPath = public_path('storage/khqr');
-            if (!File::isDirectory($folderPath)) {
-                File::makeDirectory($folderPath, 0777, true, true);
-            }
-
-            $fileName = $md5 . '.png';
-            $filePath = $folderPath . '/' . $fileName;
-
-            // --- Check if image already exists ---
-            $imageExists = File::exists($filePath);
-
-            if (!$imageExists) {
-                // --- Generate QR as PNG file ---
-                $result = Builder::create()
-                    ->writer(new PngWriter())
-                    ->data($qrString)
-                    ->encoding(new Encoding('UTF-8'))
-                    ->errorCorrectionLevel(ErrorCorrectionLevel::High)
-                    ->size(400)
-                    ->margin(10)
-                    ->roundBlockSizeMode(RoundBlockSizeMode::Margin)
-                    ->build();
-
-                // Save to file
-                $result->saveToFile($filePath);
-            }
-
-            // --- Public URL ---
-            $qrImageUrl = asset('storage/khqr/' . $fileName);
-
-            $response = [
-                'status' => 'success',
+            // ✅ Return only essential data
+            return response()->json([
                 'qr_string' => $qrString,
-                'qr_image_url' => $qrImageUrl,
-                'md5' => $md5,
-                'amount' => $amount,
-                'currency' => $currency,
-                'is_existing' => $imageExists
-            ];
-
-            // Include original Bakong MD5 if available
-            if ($originalMd5) {
-                $response['bakong_md5'] = $originalMd5;
-                $response['md5_match'] = ($md5 === $originalMd5);
-            }
-
-            return response()->json($response);
+                // 'md5' => $md5,
+            ]);
 
         } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ], 500);
         }
     }
+
+
 
 
 

@@ -199,8 +199,8 @@
                     <p>Generating QR Code...</p>
                 </div>
                 <div id="qrContent" style="display:none;">
-                    <img id="khqrImage" src="" alt="KHQR Code"
-                        style="width:300px;height:300px;border:1px solid #ddd;padding:10px;border-radius:8px;">
+                    <!-- ✅ Replaced IMG with div -->
+                    <div id="qrCanvas" class="d-flex justify-content-center mb-3"></div>
                     <p id="qrTimer" class="mt-3 text-danger fw-bold"></p>
                     <p class="text-muted">Use any KHQR-supported bank app to scan</p>
                     <p class="text-success mt-2"><small>Amount: <span id="qrAmount"></span></small></p>
@@ -217,6 +217,9 @@
 @endsection
 
 @push('scripts')
+<!-- ✅ Add this library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
 <script>
 $(document).ready(function() {
     $.ajaxSetup({
@@ -237,12 +240,72 @@ $(document).ready(function() {
             if (qrTimeLeft <= 0) {
                 clearInterval(qrTimerInterval);
                 $('#qrTimer').text('QR expired! Please close and try again.');
-                $('#khqrImage').css('opacity', '0.4');
+                $('#qrCanvas').css('opacity', '0.4');
+                $('#submitCheckoutForm').addClass('disabled');
             }
         }, 1000);
     }
 
-    // shipping + address selection
+    function showQrError(message) {
+        $('#qrLoadingSpinner').hide();
+        $('#qrContent').hide();
+        $('#qrError').show();
+        $('#qrErrorMessage').text(message);
+        toastr.error(message);
+    }
+
+    // ✅ Generate KHQR dynamically from backend QR string
+    function generateKHQR(amount) {
+        $('#qrLoadingSpinner').show();
+        $('#qrContent').hide();
+        $('#qrError').hide();
+        $('#khqrModal').modal('show');
+
+        $.ajax({
+            url: "{{ route('user.checkout.khqr-generate') }}",
+            method: 'POST',
+            data: {
+                amount: amount
+            },
+            success: function(res) {
+                console.log('KHQR Response:', res);
+
+                // ✅ Detect QR from backend structure
+                const qrValue = res.qr_string?.data?.qr;
+
+                if (qrValue) {
+                    $('#qrLoadingSpinner').hide();
+                    $('#qrContent').show();
+
+                    // Clear any existing QR
+                    $('#qrCanvas').empty();
+
+                    // ✅ Generate new QR
+                    new QRCode(document.getElementById("qrCanvas"), {
+                        text: qrValue,
+                        width: 300,
+                        height: 300
+                    });
+
+                    $('#qrAmount').text("{{$settings->currency_icon}}" + amount);
+                    $('#qrTimer').text('QR expires in 120s');
+                    startQrTimer();
+                } else {
+                    showQrError('Failed to generate KHQR');
+                }
+            },
+            error: function(xhr) {
+                console.error('AJAX Error:', xhr);
+                let msg = 'Server error. Please try again.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                }
+                showQrError(msg);
+            }
+        });
+    }
+
+    // Shipping + Payment logic
     $('.shipping_method').on('click', function() {
         let shippingFee = $(this).data('id');
         let currentTotal = $('#total_amount').data('id');
@@ -261,70 +324,7 @@ $(document).ready(function() {
         $('#payment_method').val($(this).val());
     });
 
-    // ✅ KHQR generator with base64 support
-    function generateKHQR(amount) {
-        // Show modal with loading state
-        $('#qrLoadingSpinner').show();
-        $('#qrContent').hide();
-        $('#qrError').hide();
-        $('#khqrModal').modal('show');
-
-        $.ajax({
-            url: "{{ route('user.checkout.khqr-generate') }}",
-            method: 'POST',
-            data: {
-                // amount: 0.01 // for testing
-                amount: amount
-            },
-            success: function(res) {
-                console.log('KHQR Response:', res); // Debug log
-
-                if (res.status === 'success' && res.qr_image_url) {
-                    // Hide loading, show QR content
-                    $('#qrLoadingSpinner').hide();
-                    $('#qrContent').show();
-
-                    // Set the base64 image
-                    $('#khqrImage')
-                        .attr('src', res.qr_image_url)
-                        .css('opacity', '1')
-                        .on('error', function() {
-                            console.error('Image failed to load');
-                            showQrError('Failed to load QR image. Please try again.');
-                        });
-
-                    $('#qrAmount').text("{{$settings->currency_icon}}" + amount);
-                    $('#qrTimer').text('QR expires in 120s');
-                    startQrTimer();
-                    $('#submitCheckoutForm').text('Place Order');
-                } else {
-                    showQrError(res.message || 'Failed to generate KHQR');
-                    $('#submitCheckoutForm').text('Place Order');
-                }
-            },
-            error: function(xhr) {
-                console.error('AJAX Error:', xhr); // Debug log
-                let msg = 'Server error. Please try again.';
-
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    msg = xhr.responseJSON.message;
-                }
-
-                showQrError(msg);
-                $('#submitCheckoutForm').text('Place Order');
-            }
-        });
-    }
-
-    function showQrError(message) {
-        $('#qrLoadingSpinner').hide();
-        $('#qrContent').hide();
-        $('#qrError').show();
-        $('#qrErrorMessage').text(message);
-        toastr.error(message);
-    }
-
-    // Place Order button
+    // Place Order
     $('#submitCheckoutForm').on('click', function(e) {
         e.preventDefault();
         let payment = $('#payment_method').val();
@@ -360,10 +360,10 @@ $(document).ready(function() {
         }
     });
 
-    // Close modal event
     $('#khqrModal').on('hidden.bs.modal', function() {
         clearInterval(qrTimerInterval);
-        $('#khqrImage').attr('src', '');
+        $('#qrCanvas').empty();
+        $('#submitCheckoutForm').removeClass('disabled');
     });
 });
 </script>
