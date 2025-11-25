@@ -216,10 +216,9 @@
 </div>
 @endsection
 
-@push('scripts')
-<!-- ✅ Add this library -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
+@push('scripts')
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 $(document).ready(function() {
     $.ajaxSetup({
@@ -230,6 +229,8 @@ $(document).ready(function() {
 
     let qrTimerInterval;
     let qrTimeLeft = 120;
+    let paymentCheckInterval;
+    let currentMd5 = null;
 
     function startQrTimer() {
         qrTimeLeft = 120;
@@ -239,6 +240,7 @@ $(document).ready(function() {
             $('#qrTimer').text('QR expires in ' + qrTimeLeft + 's');
             if (qrTimeLeft <= 0) {
                 clearInterval(qrTimerInterval);
+                clearInterval(paymentCheckInterval);
                 $('#qrTimer').text('QR expired! Please close and try again.');
                 $('#qrCanvas').css('opacity', '0.4');
                 $('#submitCheckoutForm').addClass('disabled');
@@ -254,33 +256,31 @@ $(document).ready(function() {
         toastr.error(message);
     }
 
-    // ✅ Generate KHQR dynamically from backend QR string
+    // ✅ Generate KHQR dynamically and begin checking payment
     function generateKHQR(amount) {
         $('#qrLoadingSpinner').show();
         $('#qrContent').hide();
         $('#qrError').hide();
-        $('#khqrModal').modal('show');
+        $('#khqrModal')?.modal('show');
 
         $.ajax({
             url: "{{ route('user.checkout.khqr-generate') }}",
             method: 'POST',
             data: {
-                amount: amount
+                // amount: amount
+                amount: 0.01
             },
             success: function(res) {
                 console.log('KHQR Response:', res);
 
-                // ✅ Detect QR from backend structure
                 const qrValue = res.qr_string?.data?.qr;
+                currentMd5 = res.qr_string?.data?.md5; // ✅ backend must return md5 hash
 
                 if (qrValue) {
                     $('#qrLoadingSpinner').hide();
                     $('#qrContent').show();
 
-                    // Clear any existing QR
                     $('#qrCanvas').empty();
-
-                    // ✅ Generate new QR
                     new QRCode(document.getElementById("qrCanvas"), {
                         text: qrValue,
                         width: 300,
@@ -290,6 +290,9 @@ $(document).ready(function() {
                     $('#qrAmount').text("{{$settings->currency_icon}}" + amount);
                     $('#qrTimer').text('QR expires in 120s');
                     startQrTimer();
+
+                    // ✅ Start checking payment in real time
+                    startPaymentCheck(currentMd5);
                 } else {
                     showQrError('Failed to generate KHQR');
                 }
@@ -303,6 +306,41 @@ $(document).ready(function() {
                 showQrError(msg);
             }
         });
+    }
+
+    // ✅ Realtime Payment Check
+    function startPaymentCheck(md5) {
+        clearInterval(paymentCheckInterval);
+        let userId = "{{ auth()->id() }}";
+
+        paymentCheckInterval = setInterval(function() {
+            $.ajax({
+                url: "{{ route('user.checkout.check-payment-status') }}",
+                method: 'POST',
+                data: {
+                    md5: md5,
+                    user_id: userId,
+                    _token: "{{ csrf_token() }}" // important for Laravel POST
+                },
+                success: function(res) {
+                    console.log('Payment Check Response:', res);
+
+                    if (res.status && res.status.toUpperCase() === 'PAID') {
+                        clearInterval(paymentCheckInterval);
+                        toastr.success('✅ Payment received successfully!');
+                        $('#khqrModal').modal('hide');
+
+                        setTimeout(() => {
+                            window.location.href =
+                                "{{ route('user.order.success') }}";
+                        }, 1500);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Payment check error:', xhr.responseText);
+                }
+            });
+        }, 5000); // check every 5 seconds
     }
 
     // Shipping + Payment logic
@@ -362,6 +400,7 @@ $(document).ready(function() {
 
     $('#khqrModal').on('hidden.bs.modal', function() {
         clearInterval(qrTimerInterval);
+        clearInterval(paymentCheckInterval);
         $('#qrCanvas').empty();
         $('#submitCheckoutForm').removeClass('disabled');
     });

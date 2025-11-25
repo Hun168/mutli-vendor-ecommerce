@@ -141,6 +141,8 @@ Route::group(['middleware' => ['auth', 'verified'], 'prefix' => 'user', 'as' => 
     Route::post('checkout/address-create', [CheckOutController::class, 'createAddress'])->name('checkout.address.create');
     Route::post('checkout/form-submit', [CheckOutController::class, 'checkOutFormSubmit'])->name('checkout.form-submit');
     Route::match(['get', 'post'], 'checkout/khqr-generate', [CheckOutController::class, 'generateKhqr'])->name('checkout.khqr-generate');
+    Route::post('checkout/check-payment-status', [CheckOutController::class, 'checkPaymentStatus'])->name('checkout.check-payment-status');
+    Route::get('order/success', [OrderController::class, 'success'])->name('order.success');
 
     /** Payment Routes */
     Route::get('payment', [PaymentController::class, 'index'])->name('payment');

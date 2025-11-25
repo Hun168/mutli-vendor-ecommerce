@@ -10,13 +10,10 @@ use Illuminate\Support\Facades\Session;
 use KHQR\BakongKHQR;
 use KHQR\Helpers\KHQRData;
 use KHQR\Models\IndividualInfo;
-use Endroid\QrCode\Writer\PngWriter;
-use Endroid\QrCode\Builder\Builder;
-use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel;
-use Endroid\QrCode\RoundBlockSizeMode;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\URL;
+use App\Models\PaymentTransaction;
+use App\Services\BakongKhqrService;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 
 class CheckOutController extends Controller
@@ -97,9 +94,6 @@ class CheckOutController extends Controller
         ]);
     }
 
-    /**
-     * Generate KHQR for payment
-     */
     public function generateKhqr(Request $request)
     {
         try {
@@ -151,59 +145,69 @@ class CheckOutController extends Controller
     }
 
 
-
-
-
     // public function checkPaymentStatus(Request $request)
     // {
+    //     $request->validate([
+    //         'md5' => 'required|string',
+    //     ]);
+
+    //     $md5 = $request->input('md5');
+
+    //     $bakongKhqr = new BakongKhqrService(); // ✅ initialize service here
+
     //     try {
-    //         $md5 = $request->input('md5');
-    //         $userId = $request->input('user_id');
+    //         $response = $bakongKhqr->checkTransactionByMD5($md5);
 
-    //         if (!$md5 || !$userId) {
-    //             return response()->json(['error' => 'md5 and user_id are required'], 400);
+    //         if ($response->failed()) {
+    //             return response()->json(['status' => 'unpaid']);
     //         }
 
-    //         // --- Initialize BakongKHQR with Token ---
-    //         $token = env('BAKONG_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiY2JhZTIwMjVjZWFhNDhkYyJ9LCJpYXQiOjE3NjA2NzIwNTgsImV4cCI6MTc2ODQ0ODA1OH0.oBv-JPoDKOQRz3kCvLHqKQZ3zmC6fiCENFXwGBkecb4');
-    //         $khqr = new BakongKHQR([
-    //             'token' => $token
-    //         ]);
+    //         $data = $response->json();
 
-    //         // --- Check Payment Status via Bakong ---
-    //         $paymentStatus = $khqr->checkPayment($md5);
+    //         $status = (isset($data['status']) && strtoupper($data['status']) === 'PAID')
+    //             ? 'paid'
+    //             : 'unpaid';
 
-    //         // --- Update Transaction ---
-    //         $txn = PaymentTransaction::where('md5_hash', $md5)->first();
-    //         if ($txn) {
-    //             $txn->status = $paymentStatus;
-    //             $txn->save();
-    //         }
-
-    //         // --- If Paid, Update User Subscription ---
-    //         if ($paymentStatus === 'PAID') {
-    //             $user = User::find($userId);
-    //             if ($user) {
-    //                 $user->user_type = 'subscription';
-
-    //                 if ($user->subscription_end && $user->subscription_end->isFuture()) {
-    //                     $user->subscription_end = $user->subscription_end->addDays(30);
-    //                 } else {
-    //                     $user->subscription_end = Carbon::now()->addDays(30);
-    //                 }
-
-    //                 $user->save();
-    //             }
-    //         }
-
+    //         return response()->json(['status' => $status]);
+    //     } catch (\Exception $e) {
     //         return response()->json([
-    //             'md5' => $md5,
-    //             'status' => $paymentStatus,
-    //         ]);
-
-    //     } catch (\Throwable $e) {
-    //         return response()->json(['error' => $e->getMessage()], 500);
+    //             'error' => 'Failed to check payment status',
+    //             'message' => $e->getMessage(),
+    //         ], 500);
     //     }
     // }
+
+    public function checkPaymentStatus(Request $request)
+    {
+        try {
+            // $url = 'https://api-bakong.nbc.gov.kh/v1/check_transaction';
+            $url = 'https://api-bakong-test.nbc.gov.kh/v1/check_transaction';
+
+            // ✅ Correct: read credentials from .env
+            $headers = [
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+                'Bakong-API-Key' => env('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiY2JhZTIwMjVjZWFhNDhkYyJ9LCJpYXQiOjE3NjA2NzIwNTgsImV4cCI6MTc2ODQ0ODA1OH0.oBv-JPoDKOQRz3kCvLHqKQZ3zmC6fiCENFXwGBkecb4'),
+                'Bakong-Client-ID' => env('SOTHEAREACH MEAS'),
+            ];
+
+            $body = [
+                'transactionId' => $request->md5,
+                'merchantId' => env('BAKONG_MERCHANT_ID'),
+            ];
+
+            $response = Http::withHeaders($headers)->post($url, $body);
+
+            $data = $response->json();
+
+            if (!empty($data['transactionStatus']) && strtoupper($data['transactionStatus']) === 'PAID') {
+                return response()->json(['status' => 'PAID', 'data' => $data]);
+            }
+
+            return response()->json(['status' => 'UNPAID', 'data' => $data]);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'UNPAID', 'message' => $e->getMessage()], 500);
+        }
+    }
 
 }
