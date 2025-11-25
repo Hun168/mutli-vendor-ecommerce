@@ -27,6 +27,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+
+        // 🚫 Avoid database queries during CLI commands (like composer install, package:discover)
+        if ($this->app->runningInConsole()) {
+            return;
+        }
+
+
         Paginator::useBootstrap();
 
         $generalSetting = GeneralSetting::first();
