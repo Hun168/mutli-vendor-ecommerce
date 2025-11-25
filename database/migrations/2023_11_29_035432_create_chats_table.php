@@ -10,6 +10,11 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        // If the table already exists, do nothing
+        if (Schema::hasTable('chats')) {
+            return;
+        }
+
         Schema::create('chats', function (Blueprint $table) {
             $table->id();
             $table->foreignId('sender_id');
