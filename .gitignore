@@ -1,3 +1,4 @@
-/vendor/srmklive/paypal/tests/Mocks/samples
-node_modules
-vendor/    
+git rm -r --cached vendor
+echo "/vendor" >> .gitignore
+git add .gitignore
+git commit -m "Stop tracking vendor"
