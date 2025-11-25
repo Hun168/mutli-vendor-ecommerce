@@ -10,25 +10,14 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        if (!Schema::hasTable('chats')) {
-            Schema::create('chats', function (Blueprint $table) {
-                $table->id();
-                $table->foreignId('sender_id');
-                $table->foreignId('receiver_id');
-                $table->text('message');
-                $table->boolean('seen')->default(0);
-                $table->timestamps();
-            });
-        } else {
-            Schema::create('chats', function (Blueprint $table) {
-                $table->id();
-                $table->foreignId('sender_id');
-                $table->foreignId('receiver_id');
-                $table->text('message');
-                $table->boolean('seen')->default(0);
-                $table->timestamps();
-            });
-        }
+        Schema::create('chats', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('sender_id');
+            $table->foreignId('receiver_id');
+            $table->text('message');
+            $table->boolean('seen')->default(0);
+            $table->timestamps();
+        });
     }
 
     /**
